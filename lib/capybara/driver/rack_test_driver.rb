@@ -223,7 +223,7 @@ private
   end
 
   def follow_redirects!
-    Capybara::WaitUntil.timeout(4) do
+    Capybara::WaitUntil.timeout(Capybara.default_wait_time) do
       redirect = response.redirect?
       follow_redirect! if redirect
       not redirect
