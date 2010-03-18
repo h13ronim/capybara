@@ -26,6 +26,10 @@ module Capybara
       @default_wait_time ||= 2
     end
 
+    def default_timeout
+      @default_timeout ||= 4
+    end
+
     def log(message)
       puts "[capybara] #{message}" if debug
       true
@@ -50,4 +54,5 @@ end
 Capybara.run_server = true
 Capybara.default_selector = :xpath
 Capybara.default_wait_time = 2
+Capybara.default_timeout = 4
 Capybara.ignore_hidden_elements = false
