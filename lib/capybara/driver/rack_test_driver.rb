@@ -29,12 +29,12 @@ class Capybara::Driver::RackTest < Capybara::Driver::Base
 
     def set(value)
       if tag_name == 'input' and type == 'radio'
-        driver.html.xpath("//input[@name='#{self[:name]}']").each { |node| node.remove_attribute("checked") }
+        driver.html.xpath("//input[@name=#{Capybara::XPath.escape(self[:name])}]").each { |node| node.remove_attribute("checked") }
         node['checked'] = 'checked'
       elsif tag_name == 'input' and type == 'checkbox'
-        if value
+        if value && !node['checked']
           node['checked'] = 'checked'
-        else
+        elsif !value && node['checked']
           node.remove_attribute('checked')
         end
       elsif tag_name == 'input'
@@ -49,8 +49,8 @@ class Capybara::Driver::RackTest < Capybara::Driver::Base
         node.xpath(".//option[@selected]").each { |node| node.remove_attribute("selected") }
       end
 
-      if option_node = node.xpath(".//option[text()='#{option}']").first ||
-                       node.xpath(".//option[contains(.,'#{option}')]").first
+      if option_node = node.xpath(".//option[text()=#{Capybara::XPath.escape(option)}]").first ||
+                       node.xpath(".//option[contains(.,#{Capybara::XPath.escape(option)})]").first
         option_node["selected"] = 'selected'
       else
         options = node.xpath(".//option").map { |o| "'#{o.text}'" }.join(', ')
@@ -63,8 +63,8 @@ class Capybara::Driver::RackTest < Capybara::Driver::Base
         raise Capybara::UnselectNotAllowed, "Cannot unselect option '#{option}' from single select box."
       end
 
-      if option_node = node.xpath(".//option[text()='#{option}']").first ||
-                       node.xpath(".//option[contains(.,'#{option}')]").first
+      if option_node = node.xpath(".//option[text()=#{Capybara::XPath.escape(option)}]").first ||
+                       node.xpath(".//option[contains(.,#{Capybara::XPath.escape(option)})]").first
         option_node.remove_attribute('selected')
       else
         options = node.xpath(".//option").map { |o| "'#{o.text}'" }.join(', ')
@@ -74,7 +74,8 @@ class Capybara::Driver::RackTest < Capybara::Driver::Base
 
     def click
       if tag_name == 'a'
-        driver.visit(self[:href].to_s)
+        method = self["data-method"] || :get
+        driver.process(method, self[:href].to_s)
       elsif (tag_name == 'input' or tag_name == 'button') and %w(submit image).include?(type)
         Form.new(driver, form).submit(self)
       end
@@ -176,21 +177,23 @@ class Capybara::Driver::RackTest < Capybara::Driver::Base
   end
 
   include ::Rack::Test::Methods
-  attr_reader :app, :html, :body
+  attr_reader :app
 
   alias_method :response, :last_response
   alias_method :request, :last_request
-  alias_method :source, :body
 
   def initialize(app)
     @app = app
   end
 
   def visit(path, attributes = {})
+    process(:get, path, attributes)
+  end
+
+  def process(method, path, attributes = {})
     return if path.gsub(/^#{current_path}/, '') =~ /^#/
-    get(path, attributes, env)
+    send(method, path, attributes, env)
     follow_redirects!
-    cache_body
   end
 
   def current_url
@@ -205,14 +208,32 @@ class Capybara::Driver::RackTest < Capybara::Driver::Base
     path = current_path if not path or path.empty?
     send(method, path, attributes, env)
     follow_redirects!
-    cache_body
   end
 
   def find(selector)
     html.xpath(selector).map { |node| Node.new(self, node) }
   end
+  
+  def body
+    @body ||= response.body
+  end
+  
+  def html
+    @html ||= Nokogiri::HTML(body)
+  end
+  alias_method :source, :body
 
+  def get(*args, &block); reset_cache; super; end
+  def post(*args, &block); reset_cache; super; end
+  def put(*args, &block); reset_cache; super; end
+  def delete(*args, &block); reset_cache; super; end
+  
 private
+
+  def reset_cache
+    @body = nil
+    @html = nil
+  end
 
   def build_rack_mock_session # :nodoc:
     Rack::MockSession.new(app, Capybara.default_host || "www.example.com")
@@ -242,9 +263,9 @@ private
     env
   end
 
-  def cache_body
-    @body = response.body
-    @html = Nokogiri::HTML(body)
+  def reset_cache
+    @body = nil
+    @html = nil
   end
 
 end
